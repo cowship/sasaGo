@@ -1,3 +1,6 @@
+##출처
+출처를 밝힙니다! https://github.com/gibiee/omok-ai 이분의 코드를 활용하였고 웹사이트 UI만 추가하였습니다!
+
 [알파고(AlphaGo)](https://www.nature.com/articles/nature16961)와 [알파고 제로(AlphaGo Zero)](https://www.nature.com/articles/nature24270)의 방법론을 모방하여 오목 인공지능(AI)을 구현하는 프로젝트입니다.
 
 아래 유사 프로젝트들의 소스코드를 적극 활용하였습니다.
