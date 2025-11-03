@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>sasaGo</title>
+<style>
+  :root {
+    --size: 720px;        /* 보드 한 변 */
+    --pad: 24px;          /* 그리드 여백 */
+    --grid: 9;            /* 9x9 */
+    --bg: #f0dc9f;
+    --line: #333;
+    --black: #181818;
+    --white: #f7f7f7;
+    --last: #ff7800;
+    --forbid: #b80000;
+  }
+
+  /* 페이지 레이아웃 */
+  body {
+    font-family: system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    background:#111; color:#eee; min-height:100vh; margin:0;
+    display:flex; align-items:flex-start; justify-content:center;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 320px auto;  /* 좌: 사이드바, 우: 보드 */
+    gap: 24px; align-items: start; padding: 24px; width: 100%; max-width: 1280px;
+  }
+  .sidebar .card, .stage .card {
+    background:#1b1b1b; border:1px solid #2a2a2a; border-radius:16px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+    padding:16px 18px; margin-bottom:16px;
+  }
+  .sidebar h1 { font-size:18px; margin:0 0 8px 0; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap: wrap; }
+  input, select, button {
+    background:#0f0f0f; color:#eee; border:1px solid #3a3a3a; border-radius:10px; padding:10px 12px; font-size:14px;
+  }
+  button.primary { background:#2563eb; border-color:#2563eb; }
+  .stage { width: calc(var(--size) + var(--pad)*2); }
+
+  /* 상단 굵은 상태 배너 */
+  .status.status--hero {
+    font-size: 18px; font-weight: 800; letter-spacing: 0.2px;
+    padding: 14px 16px; margin: 0 0 12px 0; border-radius: 12px;
+    background: linear-gradient(180deg, #223 0%, #112 100%);
+    color: #cde3ff; border: 1px solid #374151; text-shadow: 0 1px 0 rgba(0,0,0,.5);
+  }
+
+  /* 사이드 히어로 안내 카드 */
+  .card.hero { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; }
+  .card.hero #heroMsg { font-size: 20px; font-weight: 900; line-height: 1.35; color: #f2f7ff; }
+
+  /* 보드 */
+  .board { width: var(--size); height: var(--size); background: var(--bg); border-radius: 16px; position: relative; box-shadow: inset 0 0 40px rgba(0,0,0,.25); }
+  .grid {
+    position:absolute; inset: var(--pad); display:grid;
+    grid-template-columns: repeat(calc(var(--grid)), 1fr);
+    grid-template-rows: repeat(calc(var(--grid)), 1fr);
+    z-index: 1; /* 선이 1층 */
+  }
+  .cell { position:relative; }
+  .cell::before, .cell::after { content:""; position:absolute; background: var(--line); }
+  .cell::before { height:2px; left:0; right:0; top:50%; transform: translateY(-50%); } /* 가로선 */
+  .cell::after  { width:2px; top:0; bottom:0; left:50%; transform: translateX(-50%); } /* 세로선 */
+
+  /* 별점/돌/금수 (레이어 및 클릭 방지) */
+  .star  { position:absolute; width:8px; height:8px; background:var(--line); border-radius:50%; transform:translate(-50%,-50%); z-index: 2; pointer-events: none; }
+  .stone, .forbid { position:absolute; transform: translate(-50%,-50%); z-index: 3; pointer-events: none; }
+
+  .stone { width:26px; height:26px; border-radius:50%; border:2px solid rgba(0,0,0,.6); }
+  .stone.black { background: var(--black); }
+  .stone.white { background: var(--white); }
+  .last { outline: 3px solid var(--last); outline-offset: 2px; }
+
+  .forbid { width:24px; height:24px; }
+  .forbid::before, .forbid::after{
+    content:""; position:absolute; left:4px; right:4px; top:11px; height:2px; background:var(--forbid);
+  }
+  .forbid::before { transform: rotate(45deg); }
+  .forbid::after  { transform: rotate(-45deg); }
+
+  /* 반응형 (좁은 화면에서 한 열로) */
+  @media (max-width: 980px){
+    .wrap { grid-template-columns: 1fr; }
+    .stage { width: 100%; }
+    .board { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 사이드바: 난이도/선후공/탐색 설정 -->
+  <aside class="sidebar">
+    <div class="card">
+      <h1>sasaGo</h1>
+      <div class="row">
+        <label>난이도</label>
+        <select id="hard">
+          <option>2500</option><option>5000</option><option>7500</option><option selected>10000</option>
+          <option>12500</option><option>15000</option><option>17500</option><option>20000</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>선후공</label>
+        <select id="order">
+          <!-- 값: 0=사람 흑(선공), 1=AI 흑(후공) -->
+          <option value="0" selected>선공(흑)</option>
+          <option value="1">후공(백)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>탐색</label>
+        <input id="nplayout" type="number" value="1600" min="100" step="100" style="width:110px" />
+      </div>
+      <div class="row">
+        <label>c_puct</label>
+        <input id="cpuct" type="number" value="3.0" step="0.5" style="width:110px" />
+      </div>
+      <div class="row">
+        <button class="primary" id="btnNew" style="width:100%">새 게임</button>
+      </div>
+    </div>
+
+    <!-- 강조된 안내 메시지 -->
+    <div class="card hero">
+      <div id="heroMsg">난이도/선후공 선택 후<br>“새 게임”을 눌러 시작하세요</div>
+    </div>
+  </aside>
+
+  <!-- 보드 영역 -->
+  <main class="stage">
+    <div class="status status--hero" id="status"><b>난이도/선후공 설정 → “새 게임”을 누르세요</b></div>
+    <div class="board" id="board">
+      <div class="grid" id="grid"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const boardEl   = document.getElementById('board');
+  const gridEl    = document.getElementById('grid');
+  const statusEl  = document.getElementById('status');
+  const hardEl    = document.getElementById('hard');
+  const orderEl   = document.getElementById('order');
+  const nplayoutEl= document.getElementById('nplayout');
+  const cpuctEl   = document.getElementById('cpuct');
+
+  let state = null;   // 서버 상태
+  let gridN = 9;      // 보드 크기(NxN)
+
+  /* ===== 좌표계: 실측 기반 ===== */
+  function measureGrid() {
+    const boardRect = boardEl.getBoundingClientRect();
+    const gridRect  = gridEl.getBoundingClientRect();
+
+    // float step
+    const stepXf = gridRect.width  / (gridN);
+    const stepYf = gridRect.height / (gridN);
+
+    // 정수 step으로 스냅 (화면 DPR/안티앨리어싱에 흔들리지 않도록)
+    const stepX = Math.round(stepXf);
+    const stepY = Math.round(stepYf);
+
+    // 정수 step로 채웠을 때의 총 폭/높이
+    const totalW = stepX * (gridN);
+    const totalH = stepY * (gridN);
+
+    // 그리드 상자 안에서 정수 격자를 "가운데 정렬" (여백 보정)
+    const innerOffsetX = (gridRect.width  - totalW) / 2;
+    const innerOffsetY = (gridRect.height - totalH) / 2;
+
+    // 보드 좌상단 기준의 정수화된 원점(origin) = 첫 교차점 위치
+    const x0 = (gridRect.left - boardRect.left) + innerOffsetX;
+    const y0 = (gridRect.top  - boardRect.top)  + innerOffsetY;
+
+    return { x0, y0, stepX, stepY };
+  }
+
+  function gridToPx(h, w) {
+    const { x0, y0, stepX, stepY } = measureGrid();
+    // 첫 교차점은 모서리에서 "반 칸" 안쪽(셀 중앙) 위치
+    const originX = x0 + stepX / 2;
+    const originY = y0 + stepY / 2;
+    const x = originX + w * stepX;
+    const y = originY + h * stepY;
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+
+  /* ===== 보드 렌더 ===== */
+  function renderBoard(){
+    // 그리드 셀 그리기
+    gridEl.innerHTML = "";
+    gridEl.style.setProperty('--grid', gridN);
+    for(let i=0;i<gridN*gridN;i++){
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      gridEl.appendChild(cell);
+    }
+    // 별점(9x9: 중앙 1, 15x15: 9개)
+    drawStars();
+  }
+
+  function drawStars(){
+    // 먼저 기존 별점 제거
+    document.querySelectorAll('.star').forEach(n => n.remove());
+    const stars = [];
+    if(gridN === 9){
+      stars.push([4,4]);
+    } else if (gridN === 15){
+      [[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]].forEach(p=>stars.push(p));
+    }
+    stars.forEach(([h,w])=>{
+      const {x,y} = gridToPx(h,w);
+      const pt = document.createElement('div');
+      pt.className = 'star';
+      pt.style.left = x+'px';
+      pt.style.top  = y+'px';
+      boardEl.appendChild(pt);
+    });
+  }
+
+  function clearStones(){
+    document.querySelectorAll('.stone, .forbid').forEach(n => n.remove());
+  }
+
+  function drawState(){
+    if(!state) return;
+    clearStones();
+
+    // 돌
+    Object.entries(state.stones).forEach(([move, player])=>{
+      move = parseInt(move,10);
+      const h = Math.floor(move / state.width);
+      const w = move % state.width;
+      const {x,y} = gridToPx(h,w);
+
+      // 사람=1, AI=2  /  order=0: 사람흑, order=1: AI흑
+      const humanIsBlack = (state.order === 0);
+      const isHumanStone = (player === 1);
+      const isBlack = humanIsBlack ? isHumanStone : !isHumanStone;
+
+      const s = document.createElement('div');
+      s.className = 'stone ' + (isBlack ? 'black' : 'white');
+      s.style.left = x+'px';
+      s.style.top  = y+'px';
+      if (state.last_loc && state.last_loc[0] === h && state.last_loc[1] === w) {
+        s.classList.add('last');
+      }
+      boardEl.appendChild(s);
+    });
+
+    // 금수(X) – 현재 차례가 흑일 때만 표시
+    if(state.you_black && state.forbidden){
+      state.forbidden.forEach(([h,w])=>{
+        const {x,y} = gridToPx(h,w);
+        const f = document.createElement('div');
+        f.className = 'forbid';
+        f.style.left = x+'px';
+        f.style.top  = y+'px';
+        boardEl.appendChild(f);
+      });
+    }
+
+    // 상단 상태 문구
+    const turnText = (state.current_player===1) ? '<b>당신의 차례</b> — 격자 교차점을 클릭하세요' : '<b>AI가 수를 두는 중…</b>';
+    const colorText = (state.you_black?'(흑)':'(백)');
+    statusEl.innerHTML = `${turnText} ${colorText}`;
+  }
+
+  /* ===== 서버 API ===== */
+  async function apiNew(){
+    const res = await fetch('/api/new', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        hard: parseInt(hardEl.value,10),
+        order: parseInt(orderEl.value,10),
+        n_playout: parseInt(nplayoutEl.value,10),
+        c_puct: parseFloat(cpuctEl.value)
+      })
+    });
+    const data = await res.json();
+    state = data.state;
+    gridN = state.width;
+    document.documentElement.style.setProperty('--grid', gridN);
+
+    renderBoard();
+    drawState();
+
+    // 히어로 안내 업데이트
+    const hero = document.getElementById('heroMsg');
+    if (hero) hero.innerHTML = '게임이 시작되었습니다!<br>즐겜하세요 🎉';
+
+    // AI 선공이면 바로 AI 수
+    if(state.current_player===2){
+      statusEl.innerHTML = 'AI가 선공(흑)입니다. <b>AI가 수를 두는 중…</b>';
+      await aiMove();
+    }
+  }
+
+  async function humanMove(h,w){
+    const res = await fetch('/api/human', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({h,w})
+    });
+    const data = await res.json();
+    if(data.error){
+      statusEl.innerHTML = `⛔ <b>${data.error}</b> — 다른 위치를 선택하세요`;
+      return;
+    }
+    state = data.state;
+    drawState();
+    if(data.end){
+      statusEl.innerHTML = (data.winner==='Tie')? '<b>무승부!</b> 좌측에서 “새 게임”으로 다시 시작' : `<b>종료! 승자: ${data.winner}</b>`;
+      return;
+    }
+    await aiMove();
+  }
+
+  async function aiMove(){
+    const res = await fetch('/api/ai', {method:'POST'});
+    const data = await res.json();
+    state = data.state;
+    drawState();
+    if(data.end){
+      statusEl.innerHTML = (data.winner==='Tie')? '<b>무승부!</b> 좌측에서 “새 게임”으로 다시 시작' : `<b>종료! 승자: ${data.winner}</b>`;
+    }
+  }
+
+  /* ===== 입력(클릭) 처리: 실측 스냅 + 히트박스 ===== */
+  boardEl.addEventListener('click', (e) => {
+    if (!state || state.current_player !== 1) return; // 사람 차례 아니면 무시
+
+    const boardRect = boardEl.getBoundingClientRect();
+    const { x0, y0, stepX, stepY } = measureGrid();
+
+    // 보드 내부 좌표
+    const x = e.clientX - boardRect.left;
+    const y = e.clientY - boardRect.top;
+
+    // 반 칸 기준의 원점
+    const originX = x0 + stepX / 2;
+    const originY = y0 + stepY / 2;
+
+    // 그리드 영역 밖 클릭 무시 (여유 0.5칸)
+    if (x < originX - stepX*0.5 || y < originY - stepY*0.5) return;
+    if (x > originX + stepX*(gridN-1) + stepX*0.5) return;
+    if (y > originY + stepY*(gridN-1) + stepY*0.5) return;
+
+    // 스냅 지점
+    const w = Math.round((x - originX) / stepX);
+    const h = Math.round((y - originY) / stepY);
+    if (h < 0 || h >= gridN || w < 0 || w >= gridN) return; 
+
+    // 히트박스(허용 반경)
+    const cx = originX + w * stepX;
+    const cy = originY + h * stepY;
+    const dx = x - cx, dy = y - cy;
+    const tol = Math.max(stepX, stepY) * 0.45;  // 0.4~0.5 권장
+    if ((dx*dx + dy*dy) > tol*tol) return;
+
+    humanMove(h, w);
+  });
+
+  // 리사이즈 시 별/돌 위치 재계산(레이아웃 변화 대응)
+  window.addEventListener('resize', () => {
+    drawStars();
+    drawState();
+  });
+
+  // 초기 안내
+  document.getElementById('btnNew').addEventListener('click', apiNew);
+  renderBoard();
+  statusEl.innerHTML = '<b>난이도/선후공 설정 → “새 게임”을 누르세요</b>';
+</script>
+</body>
+</html>
